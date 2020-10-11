@@ -1,6 +1,8 @@
 import base64
 
+import os
 import requests
+import json
 from flask import Blueprint
 from flask import current_app as app
 from flask import redirect, render_template, request, session, url_for
@@ -339,36 +341,57 @@ def register():
 @auth.route("/login", methods=["POST", "GET"])
 @ratelimit(method="POST", limit=10, interval=5)
 def login():
+    url_head = os.environ['LCS_HEAD']
     errors = get_errors()
     if request.method == "POST":
-        name = request.form["name"]
+        email = request.form["name"]
+        url = head + "/authorize"
+        content = {
+            "email": email,
+            "password": request.form["password"]
+        }
+        response = requests.post(url, data=json.dumps(content))
+        if response.json()["statusCode"] == 200:
 
-        # Check if the user submitted an email address or a team name
-        if validators.validate_email(name) is True:
-            user = Users.query.filter_by(email=name).first()
-        else:
-            user = Users.query.filter_by(name=name).first()
+            token = (response.json()["body"]["token"])
+            url = head + "/read"
+            content = {
+                "email": email,
+                "token": token,
+                "query": {
+                    "email": "their email"
+                }
+            }
+            response = requests.post(url, data=json.dumps(content))
 
-        if user:
-            if user and verify_password(request.form["password"], user.password):
-                session.regenerate()
+            name = response.json()["body"][0]["first_name"] + " " + response.json()["body"][0]["last_name"]; #get name
+            email_address = email
+            password = request.form["password"]
+
+            website = None
+            affiliation = response.json()["body"][0]["school"] #maybe do school?
+            country = None
+
+            with app.app_context():
+                user = Users(name=name, email=email_address, password=password)
+
+                if website:
+                    user.website = website
+                if affiliation:
+                    user.affiliation = affiliation
+                if country:
+                    user.country = country
+
+                db.session.add(user)
+                db.session.commit()
+                db.session.flush()
 
                 login_user(user)
-                log("logins", "[{date}] {ip} - {name} logged in")
 
-                db.session.close()
-                if request.args.get("next") and validators.is_safe_url(
-                    request.args.get("next")
-                ):
-                    return redirect(request.args.get("next"))
-                return redirect(url_for("challenges.listing"))
+            log("registrations", "[{date}] {ip} - {name} registered with {email}")
+            db.session.close()
 
-            else:
-                # This user exists but the password is wrong
-                log("logins", "[{date}] {ip} - submitted invalid password for {name}")
-                errors.append("Your username or password is incorrect")
-                db.session.close()
-                return render_template("login.html", errors=errors)
+            return redirect(url_for("challenges.listing"))
         else:
             # This user just doesn't exist
             log("logins", "[{date}] {ip} - submitted invalid account information")
