@@ -341,7 +341,7 @@ def register():
 @auth.route("/login", methods=["POST", "GET"])
 @ratelimit(method="POST", limit=10, interval=5)
 def login():
-    url_head = os.environ['LCS_HEAD']
+    head = os.environ(['LCS_HEAD'])
     errors = get_errors()
     if request.method == "POST":
         email = request.form["name"]
