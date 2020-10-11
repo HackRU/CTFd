@@ -341,7 +341,7 @@ def register():
 @auth.route("/login", methods=["POST", "GET"])
 @ratelimit(method="POST", limit=10, interval=5)
 def login():
-    head = os.environ(['LCS_HEAD'])
+    head = "https://api.hackru.org/dev"
     errors = get_errors()
     if request.method == "POST":
         email = request.form["name"]
@@ -354,22 +354,18 @@ def login():
         if response.json()["statusCode"] == 200:
 
             token = (response.json()["body"]["token"])
-            url = head + "/read"
+            url = head + "/validate"
             content = {
-                "email": email,
                 "token": token,
-                "query": {
-                    "email": "their email"
-                }
             }
             response = requests.post(url, data=json.dumps(content))
 
-            name = response.json()["body"][0]["first_name"] + " " + response.json()["body"][0]["last_name"]; #get name
+            name = response.json()["body"]["first_name"] + " " + response.json()["body"]["last_name"]; #get name
             email_address = email
             password = request.form["password"]
 
             website = None
-            affiliation = response.json()["body"][0]["school"] #maybe do school?
+            affiliation = response.json()["body"]["school"] #maybe do school?
             country = None
 
             with app.app_context():
