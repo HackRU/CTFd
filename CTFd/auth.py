@@ -1,6 +1,5 @@
 import base64
 
-import os
 import requests
 import json
 from flask import Blueprint
@@ -341,11 +340,11 @@ def register():
 @auth.route("/login", methods=["POST", "GET"])
 @ratelimit(method="POST", limit=10, interval=5)
 def login():
-    head = "https://api.hackru.org/dev"
     errors = get_errors()
     if request.method == "POST":
         email = request.form["name"]
-        url = head + "/authorize"
+
+        url = "https://api.hackru.org/dev/authorize"
         content = {
             "email": email,
             "password": request.form["password"]
@@ -354,40 +353,58 @@ def login():
         if response.json()["statusCode"] == 200:
 
             token = (response.json()["body"]["token"])
-            url = head + "/validate"
+            url = "https://api.hackru.org/dev/read"
             content = {
+                "email": email,
                 "token": token,
+                "query": {
+                    "email": "their email"
+                }
             }
             response = requests.post(url, data=json.dumps(content))
 
-            name = response.json()["body"]["first_name"] + " " + response.json()["body"]["last_name"]; #get name
+            name = response.json()["body"][0]["first_name"] + " " + response.json()["body"][0]["last_name"]; #get name
             email_address = email
             password = request.form["password"]
 
             website = None
-            affiliation = response.json()["body"]["school"] #maybe do school?
+            affiliation = response.json()["body"][0]["school"] #maybe do school?
             country = None
+            try:
+                with app.app_context():
+                    user = Users(name=name, email=email_address, password=password)
 
-            with app.app_context():
-                user = Users(name=name, email=email_address, password=password)
+                    if website:
+                        user.website = website
+                    if affiliation:
+                        user.affiliation = affiliation
+                    if country:
+                        user.country = country
 
-                if website:
-                    user.website = website
-                if affiliation:
-                    user.affiliation = affiliation
-                if country:
-                    user.country = country
+                    db.session.add(user)
+                    db.session.commit()
+                    db.session.flush()
 
-                db.session.add(user)
-                db.session.commit()
-                db.session.flush()
+                    login_user(user)
+
+                log("registrations", "[{date}] {ip} - {name} registered with {email}")
+                db.session.close()
+
+                return redirect(url_for("challenges.listing"))
+            except:
+                print("ALREADY A USER")
+                user = Users.query.filter_by(email=email_address).first()
+                session.regenerate()
 
                 login_user(user)
+                log("logins", "[{date}] {ip} - {name} logged in")
 
-            log("registrations", "[{date}] {ip} - {name} registered with {email}")
-            db.session.close()
-
-            return redirect(url_for("challenges.listing"))
+                db.session.close()
+                if request.args.get("next") and validators.is_safe_url(
+                    request.args.get("next")
+                ):
+                    return redirect(request.args.get("next"))
+                return redirect(url_for("challenges.listing"))
         else:
             # This user just doesn't exist
             log("logins", "[{date}] {ip} - submitted invalid account information")
