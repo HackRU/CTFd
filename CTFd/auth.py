@@ -198,31 +198,34 @@ def login():
     if request.method == "POST":
         email = request.form["name"]
 
-        url = "https://api.hackru.org/dev/authorize"
+        url = "https://api.hackru.org/dev"
         content = {
             "email": email,
             "password": request.form["password"]
         }
-        response = requests.post(url, data=json.dumps(content))
+        response = requests.post(url + "/authorize", data=json.dumps(content))
         if response.json()["statusCode"] == 200:
 
             token = (response.json()["body"]["token"])
-            url = "https://api.hackru.org/dev/read"
             content = {
                 "email": email,
                 "token": token,
                 "query": {
-                    "email": "their email"
+                    "email": email
                 }
             }
-            response = requests.post(url, data=json.dumps(content))
-
-            name = response.json()["body"][0]["first_name"] + " " + response.json()["body"][0]["last_name"]; #get name
+            response = requests.post(url + "/read", data=json.dumps(content))
+            print(response.json())
+            if (response.json()["body"][0]["registration_status"] not in ["confirmed"]):
+                errors.append("your registration status has not been confirmed. please go to hackru.org and confirm it, if issues continue contact info@hackru.org")
+                db.session.close()
+                return render_template("login.html", errors=errors)
+            name = response.json()["body"][0].get("first_name", "") + " " + response.json()["body"][0].get("last_name", ""); #get name
             email_address = email
             password = request.form["password"]
 
             website = None
-            affiliation = response.json()["body"][0]["school"] #maybe do school?
+            affiliation = response.json()["body"][0].get("school", "") #maybe do school?
             country = None
             try:
                 with app.app_context():
